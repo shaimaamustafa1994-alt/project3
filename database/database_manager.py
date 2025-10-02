@@ -16,6 +16,7 @@ class DatabaseManager:
         """
         self.db_path = db_path
         self.init_database()
+        self.create_salary_scale_table()
     
     def get_connection(self):
         """
@@ -363,4 +364,151 @@ class DatabaseManager:
         
         conn.close()
         return stats
-
+    
+    def get_salary_for_grade_stage(self, grade: int, stage: int) -> Optional[Dict]:
+        """
+        الحصول على الراتب للدرجة والمرحلة المحددة
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT salary FROM salary_scale 
+            WHERE grade = ? AND stage = ?
+        """, (grade, stage))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {'salary': row['salary']}
+        return None
+    
+    def add_career_record(self, record_data: Dict) -> int:
+        """
+        إضافة سجل في المسار الوظيفي (مرادف لـ add_career_event)
+        """
+        return self.add_career_event(record_data)
+    
+    def get_career_history(self, employee_id: int) -> List[Dict]:
+        """
+        الحصول على المسار الوظيفي للموظف (مرادف لـ get_career_events)
+        """
+        return self.get_career_events(employee_id)
+    
+    def get_upcoming_entitlements(self, days_ahead: int = 30) -> List[Dict]:
+        """
+        الحصول على الاستحقاقات القادمة خلال فترة محددة
+        """
+        from models.calculation_engine import CalculationEngine
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # الحصول على جميع الموظفين النشطين
+        cursor.execute("SELECT id FROM employees WHERE status = 'نشط'")
+        employee_ids = [row['id'] for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        # حساب الاستحقاقات لكل موظف
+        calc_engine = CalculationEngine(self)
+        upcoming = []
+        
+        from datetime import datetime, timedelta
+        target_date = datetime.now() + timedelta(days=days_ahead)
+        
+        for emp_id in employee_ids:
+            try:
+                entitlement_info = calc_engine.get_complete_entitlement_info(emp_id)
+                
+                # التحقق من كون الاستحقاق خلال الفترة المحددة
+                if entitlement_info['next_entitlement_date'] <= target_date:
+                    upcoming.append({
+                        'employee_id': emp_id,
+                        'employee_name': self.get_employee_by_id(emp_id)['full_name'],
+                        'entitlement_type': entitlement_info['next_entitlement_type'],
+                        'entitlement_date': entitlement_info['next_entitlement_date'],
+                        'current_grade': entitlement_info['current_grade'],
+                        'current_stage': entitlement_info['current_stage'],
+                        'next_grade': entitlement_info['next_grade'],
+                        'next_stage': entitlement_info['next_stage']
+                    })
+            except Exception as e:
+                print(f"خطأ في حساب استحقاق الموظف {emp_id}: {e}")
+                continue
+        
+        # ترتيب حسب تاريخ الاستحقاق
+        upcoming.sort(key=lambda x: x['entitlement_date'])
+        
+        return upcoming
+    
+    def create_salary_scale_table(self):
+        """
+        إنشاء جدول سلم الرواتب
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # إنشاء الجدول
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS salary_scale (
+                grade INTEGER,
+                stage INTEGER,
+                salary INTEGER,
+                PRIMARY KEY (grade, stage)
+            )
+        ''')
+        
+        # التحقق من وجود البيانات
+        cursor.execute("SELECT COUNT(*) FROM salary_scale")
+        count = cursor.fetchone()[0]
+        
+        if count == 0:
+            # إدراج بيانات سلم الرواتب
+            salary_data = [
+                # الدرجة الأولى
+                (1, 1, 910000), (1, 2, 930000), (1, 3, 950000), (1, 4, 970000), (1, 5, 990000),
+                (1, 6, 1010000), (1, 7, 1030000), (1, 8, 1050000), (1, 9, 1070000), (1, 10, 1090000), (1, 11, 1110000),
+                
+                # الدرجة الثانية
+                (2, 1, 723000), (2, 2, 740000), (2, 3, 757000), (2, 4, 774000), (2, 5, 791000),
+                (2, 6, 808000), (2, 7, 825000), (2, 8, 842000), (2, 9, 859000), (2, 10, 876000), (2, 11, 893000),
+                
+                # الدرجة الثالثة
+                (3, 1, 600000), (3, 2, 610000), (3, 3, 620000), (3, 4, 630000), (3, 5, 640000),
+                (3, 6, 650000), (3, 7, 660000), (3, 8, 670000), (3, 9, 680000), (3, 10, 690000), (3, 11, 700000),
+                
+                # الدرجة الرابعة
+                (4, 1, 509000), (4, 2, 517000), (4, 3, 525000), (4, 4, 533000), (4, 5, 541000),
+                (4, 6, 549000), (4, 7, 557000), (4, 8, 565000), (4, 9, 573000), (4, 10, 581000), (4, 11, 589000),
+                
+                # الدرجة الخامسة
+                (5, 1, 429000), (5, 2, 435000), (5, 3, 441000), (5, 4, 447000), (5, 5, 453000),
+                (5, 6, 459000), (5, 7, 465000), (5, 8, 471000), (5, 9, 477000), (5, 10, 483000), (5, 11, 489000),
+                
+                # الدرجة السادسة
+                (6, 1, 362000), (6, 2, 368000), (6, 3, 374000), (6, 4, 380000), (6, 5, 386000),
+                (6, 6, 392000), (6, 7, 398000), (6, 8, 404000), (6, 9, 410000), (6, 10, 416000), (6, 11, 422000),
+                
+                # الدرجة السابعة
+                (7, 1, 296000), (7, 2, 302000), (7, 3, 308000), (7, 4, 314000), (7, 5, 320000),
+                (7, 6, 326000), (7, 7, 332000), (7, 8, 338000), (7, 9, 344000), (7, 10, 350000), (7, 11, 356000),
+                
+                # الدرجة الثامنة
+                (8, 1, 260000), (8, 2, 263000), (8, 3, 266000), (8, 4, 269000), (8, 5, 272000),
+                (8, 6, 275000), (8, 7, 278000), (8, 8, 281000), (8, 9, 284000), (8, 10, 287000), (8, 11, 290000),
+                
+                # الدرجة التاسعة
+                (9, 1, 210000), (9, 2, 213000), (9, 3, 216000), (9, 4, 219000), (9, 5, 222000),
+                (9, 6, 225000), (9, 7, 228000), (9, 8, 231000), (9, 9, 234000), (9, 10, 237000), (9, 11, 240000),
+                
+                # الدرجة العاشرة
+                (10, 1, 170000), (10, 2, 173000), (10, 3, 176000), (10, 4, 179000), (10, 5, 182000),
+                (10, 6, 185000), (10, 7, 188000), (10, 8, 191000), (10, 9, 194000), (10, 10, 197000), (10, 11, 200000),
+            ]
+            
+            cursor.executemany("INSERT INTO salary_scale (grade, stage, salary) VALUES (?, ?, ?)", salary_data)
+            conn.commit()
+        
+        conn.close()

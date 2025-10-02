@@ -213,4 +213,21 @@ class Employee:
         إنشاء كائن موظف من قاموس
         """
         return cls(data)
-
+    
+    def get_entitlement_info_with_engine(self, db_manager):
+        """
+        الحصول على معلومات الاستحقاق باستخدام المحرك الذكي
+        """
+        from .calculation_engine import CalculationEngine
+        
+        calc_engine = CalculationEngine(db_manager)
+        return calc_engine.get_complete_entitlement_info(self.id)
+    
+    def process_entitlement_with_engine(self, db_manager):
+        """
+        معالجة الاستحقاق باستخدام المحرك الذكي
+        """
+        from .calculation_engine import CalculationEngine
+        
+        calc_engine = CalculationEngine(db_manager)
+        return calc_engine.process_entitlement(self.id)

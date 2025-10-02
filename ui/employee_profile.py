@@ -16,6 +16,7 @@ from config.theme import *
 from ui.components.form_components import *
 from models.employee import Employee
 from database.salary_data import get_salary
+from models.calculation_engine import CalculationEngine
 
 class EmployeeProfileWindow(ctk.CTkToplevel):
     def __init__(self, parent, db_manager, employee_id):
@@ -269,7 +270,55 @@ class EmployeeProfileWindow(ctk.CTkToplevel):
         self.title_label.configure(text=self.employee.job_title)
         self.degree_label.configure(text=self.employee.academic_degree)
         
-        # تحديث المؤشرات الرئيسية
+        # تحديث المؤشرات الرئيسية باستخدام المحرك الذكي
+        self.update_cards_with_engine()
+        
+        # تحديث عنوان النافذة
+        self.title(f"ملف الموظف - {self.employee.full_name}")
+    
+    def update_cards_with_engine(self):
+        """
+        تحديث البطاقات باستخدام المحرك الذكي للحسابات
+        """
+        try:
+            # إنشاء المحرك الذكي
+            calc_engine = CalculationEngine(self.db_manager)
+            
+            # الحصول على معلومات الاستحقاق الكاملة
+            entitlement_info = calc_engine.get_complete_entitlement_info(self.employee_id)
+            
+            # تحديث بطاقة الدرجة والمرحلة الحالية
+            current_info = f"الدرجة {entitlement_info['current_grade']} - المرحلة {entitlement_info['current_stage']}\n"
+            current_info += f"الراتب: {entitlement_info['current_salary']:,} دينار\n"
+            current_info += f"تاريخ آخر استحقاق: {entitlement_info['last_entitlement_date'].strftime('%d/%m/%Y')}\n"
+            current_info += f"المؤشر: {entitlement_info['current_indicator']}"
+            self.current_card.update_value(current_info)
+            
+            # تحديث بطاقة الاستحقاق القادم
+            next_info = f"{entitlement_info['next_entitlement_type']}\n"
+            if entitlement_info['next_entitlement_type'] != "لا يوجد استحقاق":
+                next_info += f"الدرجة {entitlement_info['next_grade']} - المرحلة {entitlement_info['next_stage']}\n"
+                next_info += f"الراتب: {entitlement_info['next_salary']:,} دينار\n"
+                next_info += f"التاريخ: {entitlement_info['next_entitlement_date'].strftime('%d/%m/%Y')}\n"
+                next_info += f"المؤشر الجديد: {entitlement_info['updated_indicator']}"
+            else:
+                next_info += "وصل الموظف للحد الأقصى"
+            self.next_card.update_value(next_info)
+            
+            # تحديث بطاقة الخدمة الفعلية
+            service = entitlement_info['effective_service']
+            service_info = f"{service['years']} سنة، {service['months']} شهر، {service['days']} يوم"
+            self.service_card.update_value(service_info)
+            
+        except Exception as e:
+            print(f"خطأ في تحديث البطاقات: {e}")
+            # في حالة الخطأ، استخدم الطريقة القديمة
+            self.update_cards_fallback()
+    
+    def update_cards_fallback(self):
+        """
+        تحديث البطاقات بالطريقة القديمة (في حالة فشل المحرك الذكي)
+        """
         # الدرجة والمرحلة الحالية
         current_info = f"{self.employee.get_grade_stage_text()}\n"
         current_info += f"الراتب: {self.employee.get_current_salary_text()}\n"
@@ -282,14 +331,11 @@ class EmployeeProfileWindow(ctk.CTkToplevel):
         next_info = f"{next_type}\n"
         next_info += f"الدرجة {next_grade} - المرحلة {next_stage}\n"
         next_info += f"الراتب: {next_salary:,} دينار\n"
-        next_info += "التاريخ: قريباً"  # سيتم حسابه في المرحلة الثانية
+        next_info += "التاريخ: قريباً"
         self.next_card.update_value(next_info)
         
         # الخدمة الفعلية
         self.service_card.update_value(self.employee.get_service_duration_text())
-        
-        # تحديث عنوان النافذة
-        self.title(f"ملف الموظف - {self.employee.full_name}")
     
     def upload_photo(self):
         """
@@ -333,4 +379,3 @@ class EmployeeProfileWindow(ctk.CTkToplevel):
         """
         if self.employee_id:
             self.load_employee(self.employee_id)
-
